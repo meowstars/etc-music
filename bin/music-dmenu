@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+
+import mpd
+import sys
+import yaml
+import subprocess
+
+MUSIC_DIR = '/home/meow/Musique'
+ACTIONS = [
+    'append',
+    'append-play',
+    'clear',
+]
+
+if __name__ == '__main__':
+    # Get colors for dmenu
+    with open('/home/meow/.colorize/current/colors.yaml') as f:
+        colors = yaml.load(f)
+    # Get playlists
+    client = mpd.MPDClient(use_unicode=True)
+    client.connect('localhost', 6600)
+    playlists = '\n'.join([pl['playlist'] for pl in client.listplaylists()])
+    dmenu = subprocess.Popen(
+        ['dmenu2', '-i', '-p', 'Music >', '-dim', '0.4',
+         '-nb', colors['background'], '-nf', colors['foreground'],
+         '-sb', colors['yellow'], '-sf', colors['background']],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    result, _ = dmenu.communicate(playlists.encode('utf-8'))
+    if not result:
+        sys.exit(1)
+    playlist = result.decode('utf-8').rstrip()
+
+    # Choose action
+    dmenu = subprocess.Popen(
+        ['dmenu'],
+        stdout=subprocess.PIPE, stdin=subprocess.PIPE)
+    result, _ = dmenu.communicate('\n'.join(ACTIONS).encode('utf-8'))
+    if not result:
+        sys.exit(1)
+    result = result.decode('utf-8').rstrip()
+    if result == 'append':
+        client.load(playlist)
+    elif result == 'append-play':
+        first_song = client.listplaylistinfo(playlist)[0]
+        client.load(playlist)
+        client.playid(client.playlistfind('title',
+                                          first_song['title'])[-1]['id'])
+    else:
+        client.clear()
+        client.load(playlist)
+        client.play(0)

@@ -1,0 +1,148 @@
+#!/bin/bash
+
+SPOTIFYPID="$(pidof -s spotify)"
+SP_DEST="org.mpris.MediaPlayer2.spotify"
+SP_PATH="/org/mpris/MediaPlayer2"
+SP_MEMB="org.mpris.MediaPlayer2.Player"
+
+cmd="$1"
+
+# DBus functions
+function sp-metadata {
+  # Prints the currently playing track in a parseable format.
+
+  dbus-send                                                                   \
+  --print-reply                                  `# We need the reply.`       \
+  --dest=$SP_DEST                                                             \
+  $SP_PATH                                                                    \
+  org.freedesktop.DBus.Properties.Get                                         \
+  string:"$SP_MEMB" string:'Metadata'                                         \
+  | grep -Ev "^method"                           `# Ignore the first line.`   \
+  | grep -Eo '("(.*)")|(\b[0-9][a-zA-Z0-9.]*\b)' `# Filter interesting fiels.`\
+  | sed -E '2~2 a|'                              `# Mark odd fields.`         \
+  | tr -d '\n'                                   `# Remove all newlines.`     \
+  | sed -E 's/\|/\n/g'                           `# Restore newlines.`        \
+  | sed -E 's/(xesam:)|(mpris:)//'               `# Remove ns prefixes.`      \
+  | sed -E 's/^"//'                              `# Strip leading...`         \
+  | sed -E 's/"$//'                              `# ...and trailing quotes.`  \
+  | sed -E 's/"+/|/'                             `# Regard "" as seperator.`  \
+  | sed -E 's/ +/ /g'                            `# Merge consecutive spaces.`
+}
+
+function sp-dbus {
+  # Sends the given method to Spotify over dbus.
+  dbus-send --print-reply --dest=$SP_DEST $SP_PATH $SP_MEMB.$1 ${*:2} > /dev/null
+}
+
+function mm_vol_up {
+	# Increase the volume by given percent
+	if [[ -z "$SPOTIFYPID" ]]; then
+		mpc volume +$1
+	else
+		ponymix --sink-input -d Spotify increase $1
+	fi
+}
+
+function mm_vol_down {
+	# Decrease the volume by given percent
+	if [[ -z "$SPOTIFYPID" ]]; then
+		mpc volume -$1
+	else
+		ponymix --sink-input -d Spotify decrease $1
+	fi
+}
+function mm_s_launch {
+	# launch spotify if not launched
+	if [[ -z "$SPOTIFYPID" ]]; then
+		nohup spotify &
+	fi
+}
+
+function mm_s_kill {
+	# kills spotify
+	if [[ -e "$SPOTIFYPID" ]]; then
+		pkill spotify &
+	fi
+}
+
+function mm_play {
+	# Play/pause music
+	if [[ -z "$SPOTIFYPID" ]]; then
+		mpc_toggle
+	else
+		sp-dbus PlayPause
+	fi
+}
+
+function mm_stop {
+	# Play/pause music
+	if [[ -z "$SPOTIFYPID" ]]; then
+		mpc stop
+	else
+		sp-dbus Stop
+	fi
+}
+
+function mm_next {
+	# Next track
+	if [[ -z "$SPOTIFYPID" ]]; then
+		mpc next
+	else
+		sp-dbus Next
+	fi
+}
+
+function mm_prev {
+	# Previous track
+	if [[ -z "$SPOTIFYPID" ]]; then
+		mpc prev
+	else
+		sp-dbus Previous
+	fi
+}
+
+function mm_current {
+	# Prints current track
+	if [[ -z "$SPOTIFYPID" ]]; then
+		mpd-status
+	else
+		sp-metadata \
+		| grep --color=never -E "(title)|(albumArtist)" \
+		| sed 's/^.*|//' \
+		| sed 's/$/#+#+#/' \
+		| tr -d '\n' \
+		| sed 's/#+#+#/ — /g' \
+		| sed 's/ — $//' 
+	fi
+}
+
+function mm_s_metadata {
+	sp-metadata
+}
+
+function usage {
+	# Prints usage
+	echo "Usage: mm [command]"
+	echo "  mm play 		- play/pause music"
+	echo "  mm stop 		- stop music"
+	echo "  mm next 		- next track"
+	echo "  mm prev 		- previous track"
+	echo "  mm current 		- print current track"
+	echo "  mm vol_up 		- increase volume"
+	echo "  mm mm_vol_down	- decrease volume"
+	echo ""
+	echo "  mm s_launch		- launch spotify if not launched"
+	echo "  mm s_kill 		- kill spotify"
+}
+
+if [[ -z "$cmd" ]]; then
+	usage
+else
+	# do stuff
+	if $(type mm_$cmd > /dev/null 2> /dev/null); then
+		shift
+		eval "mm_$cmd $@"
+	else
+		usage
+	fi
+fi
