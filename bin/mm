@@ -1,4 +1,6 @@
 #!/bin/bash
+# Yann 'Meow' Bordenave
+# Credits: https://gist.github.com/wandernauta/6800547
 
 SPOTIFYPID="$(pidof -s spotify)"
 SP_DEST="org.mpris.MediaPlayer2.spotify"
